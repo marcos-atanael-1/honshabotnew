@@ -1,0 +1,8 @@
+{
+  "rewrites": [
+    {
+      "source": "/api/proxy/(.*)",
+      "destination": "http://207.180.242.229:5000/$1"
+    }
+  ]
+} 

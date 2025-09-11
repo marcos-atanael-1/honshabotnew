@@ -1,0 +1,19 @@
+(
+echo # Frontend (Node/React/Vite/Next)
+echo node_modules/
+echo .next/
+echo dist/
+echo out/
+echo .vite/
+echo
+echo # Backend (Python/FastAPI/Flask)
+echo venv/
+echo .env
+echo .env.*
+echo __pycache__/
+echo *.pyc
+echo
+echo # Geral
+echo *.log
+echo .DS_Store
+) > .gitignore
