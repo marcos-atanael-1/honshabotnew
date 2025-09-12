@@ -209,7 +209,6 @@ export function HomePage() {
             nome: newClientData.nome,
             descricao: newClientData.descricao,
             imagem_url: imageUrl || null,
-            user_id: user?.id,
           },
         ]);
 
