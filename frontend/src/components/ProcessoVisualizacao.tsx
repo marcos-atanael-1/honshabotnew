@@ -677,17 +677,178 @@ export function ProcessoVisualizacao({ processo, analise, onStatusUpdate, onDele
           }
         } else if (processo.tipo_entrada === 'texto') {
           console.log('Processo do tipo texto, usando conteudo_texto do processo');
-          // Criar um objeto de transcrição com o conteúdo do texto do processo
-          const textoTranscricao: Transcricao = {
-            id: `texto-${processo.id}`,
-            processo_id: processo.id,
-            conteudo: processo.conteudo_texto || '',
-            status: 'concluido',
-            created_at: processo.created_at,
-            updated_at: processo.updated_at
-          };
+          // Verificar se já existe transcrição para este processo de texto
+          const { data: existingTranscricao } = await supabase
+            .from('transcricoes')
+            .select('*')
+            .eq('processo_id', processo.id)
+            .single();
+          
+          let textoTranscricao: Transcricao;
+          
+          if (existingTranscricao) {
+            textoTranscricao = existingTranscricao;
+          } else {
+            // Criar transcrição no banco para processos de texto
+            const { data: newTranscricao, error: transcricaoError } = await supabase
+              .from('transcricoes')
+              .insert([{
+                processo_id: processo.id,
+                conteudo: processo.conteudo_texto || '',
+                status: 'concluido',
+                tipo_transcricao: 'texto'
+              }])
+              .select()
+              .single();
+            
+            if (!transcricaoError && newTranscricao) {
+              textoTranscricao = newTranscricao;
+            } else {
+              // Fallback para objeto mock se houver erro
+              textoTranscricao = {
+                id: `texto-${processo.id}`,
+                processo_id: processo.id,
+                conteudo: processo.conteudo_texto || '',
+                status: 'concluido',
+                created_at: processo.created_at,
+                updated_at: processo.updated_at
+              };
+            }
+          }
+          
           setTranscricao(textoTranscricao);
           setLastUpdate(new Date());
+          
+          // Para processos de texto, verificar se existe análise e criar se necessário
+          if (processo.status === 'processado' && !localAnalise && processo.conteudo_texto) {
+            try {
+              console.log('Gerando análise para processo de texto...');
+              const analysis = await transcriptionService.generateAnalysisFromTranscription(processo.conteudo_texto);
+              
+              const { data: newAnalise, error: analiseError } = await supabase
+                .from('analises')
+                .insert([{
+                  processo_id: processo.id,
+                  transcricao: processo.conteudo_texto,
+                  ...analysis,
+                }])
+                .select()
+                .single();
+
+              if (!analiseError && newAnalise) {
+                setLocalAnalise(newAnalise);
+                
+                // Criar dados de exemplo na tabela analise_fluxo para processos de texto
+                try {
+                  const analiseFluxoData = [
+                    {
+                      processo_id: processo.id,
+                      transcricao_id: textoTranscricao.id,
+                      estado: 'Análise Inicial',
+                      seq: 1,
+                      responsavel_area: 'Área Responsável',
+                      etapa_descricao: 'Etapa do processo identificada no texto',
+                      desvios_variacoes: ['Desvio identificado no processo'],
+                      problemas: ['Problema encontrado na análise'],
+                      causas_possiveis: ['Possível causa do problema'],
+                      kaizen_discutido: 'Melhoria sugerida baseada no texto',
+                      kaizen_alternativo_boas_praticas: ['Boa prática recomendada'],
+                      referencia_acordada: 'Referência padrão',
+                      timestamp_inicio: '00:00:00',
+                      timestamp_fim: '00:01:00',
+                      evidencia_texto: processo.conteudo_texto?.substring(0, 500) || 'Texto do processo'
+                    }
+                  ];
+                  
+                  await supabase
+                    .from('analise_fluxo')
+                    .insert(analiseFluxoData);
+                  
+                  console.log('✅ Dados de exemplo criados na tabela analise_fluxo para processo de texto');
+                } catch (fluxoError) {
+                  console.warn('⚠️ Erro ao criar dados na analise_fluxo:', fluxoError);
+                }
+                
+                onStatusUpdate(); // Atualizar o componente pai
+                console.log('✅ Análise criada com sucesso para processo de texto');
+              }
+            } catch (analysisError) {
+              console.warn('⚠️ Erro ao gerar análise para processo de texto:', analysisError);
+              // Criar análise básica em caso de erro
+              try {
+                const { data: basicAnalise, error: basicError } = await supabase
+                  .from('analises')
+                  .insert([{
+                    processo_id: processo.id,
+                    transcricao: processo.conteudo_texto,
+                    fluxo_original_json: {
+                      nodes: [
+                        { id: '1', type: 'input', position: { x: 50, y: 50 }, data: { label: 'Início' } },
+                        { id: '2', position: { x: 50, y: 150 }, data: { label: 'Processo de Texto' } },
+                        { id: '3', type: 'output', position: { x: 50, y: 250 }, data: { label: 'Fim' } },
+                      ],
+                      edges: [
+                        { id: 'e1-2', source: '1', target: '2' },
+                        { id: 'e2-3', source: '2', target: '3' },
+                      ],
+                    },
+                    fluxo_melhorado_json: {
+                      nodes: [
+                        { id: '1', type: 'input', position: { x: 50, y: 50 }, data: { label: 'Início' } },
+                        { id: '2', position: { x: 50, y: 150 }, data: { label: 'Processo Otimizado' } },
+                        { id: '3', type: 'output', position: { x: 50, y: 250 }, data: { label: 'Fim' } },
+                      ],
+                      edges: [
+                        { id: 'e1-2', source: '1', target: '2' },
+                        { id: 'e2-3', source: '2', target: '3' },
+                      ],
+                    },
+                    sugestoes_melhoria: ['Análise básica criada automaticamente para processo de texto'],
+                  }])
+                  .select()
+                  .single();
+
+                if (!basicError && basicAnalise) {
+                  setLocalAnalise(basicAnalise);
+                  
+                  // Criar dados de exemplo na tabela analise_fluxo para processos de texto
+                  try {
+                    const analiseFluxoData = [
+                      {
+                        processo_id: processo.id,
+                        transcricao_id: textoTranscricao.id,
+                        estado: 'Análise Inicial',
+                        seq: 1,
+                        responsavel_area: 'Área Responsável',
+                        etapa_descricao: 'Etapa do processo identificada no texto',
+                        desvios_variacoes: ['Desvio identificado no processo'],
+                        problemas: ['Problema encontrado na análise'],
+                        causas_possiveis: ['Possível causa do problema'],
+                        kaizen_discutido: 'Melhoria sugerida baseada no texto',
+                        kaizen_alternativo_boas_praticas: ['Boa prática recomendada'],
+                        referencia_acordada: 'Referência padrão',
+                        timestamp_inicio: '00:00:00',
+                        timestamp_fim: '00:01:00',
+                        evidencia_texto: processo.conteudo_texto?.substring(0, 500) || 'Texto do processo'
+                      }
+                    ];
+                    
+                    await supabase
+                      .from('analise_fluxo')
+                      .insert(analiseFluxoData);
+                    
+                    console.log('✅ Dados de exemplo criados na tabela analise_fluxo para processo de texto');
+                  } catch (fluxoError) {
+                    console.warn('⚠️ Erro ao criar dados na analise_fluxo:', fluxoError);
+                  }
+                  onStatusUpdate();
+                  console.log('✅ Análise básica criada para processo de texto');
+                }
+              } catch (basicAnalysisError) {
+                console.error('❌ Erro ao criar análise básica:', basicAnalysisError);
+              }
+            }
+          }
         } else {
           console.log('Tipo de entrada desconhecido:', processo.tipo_entrada);
           setTranscricao(null);
@@ -701,7 +862,7 @@ export function ProcessoVisualizacao({ processo, analise, onStatusUpdate, onDele
     };
 
     fetchTranscricao();
-  }, [processo.id, processo.tipo_entrada, processo.conteudo_texto, activeTab]);
+  }, [processo.id, processo.tipo_entrada, processo.conteudo_texto, processo.status, localAnalise, activeTab, onStatusUpdate]);
 
   // Buscar transcrição do Estado Atual
   useEffect(() => {
