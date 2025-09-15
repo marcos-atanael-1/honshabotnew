@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Teste de Criação de Processo</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+        }
+        .success { background-color: #d4edda; color: #155724; }
+        .error { background-color: #f8d7da; color: #721c24; }
+        .info { background-color: #d1ecf1; color: #0c5460; }
+        .warning { background-color: #fff3cd; color: #856404; }
+        button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover { background-color: #0056b3; }
+        #results {
+            margin-top: 20px;
+            padding: 15px;
+            background-color: #f8f9fa;
+            border-radius: 4px;
+            white-space: pre-wrap;
+            font-family: monospace;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔧 Teste de Criação de Processo</h1>
+        
+        <div class="info">
+            <strong>Instruções:</strong>
+            <ol>
+                <li>Certifique-se de estar logado na aplicação principal</li>
+                <li>Clique nos botões abaixo para executar os testes</li>
+                <li>Verifique os resultados na área de log</li>
+            </ol>
+        </div>
+
+        <div>
+            <button onclick="testAuth()">1. Testar Autenticação</button>
+            <button onclick="testClientes()">2. Verificar Clientes</button>
+            <button onclick="testProcessoCreation()">3. Testar Criação de Processo</button>
+            <button onclick="clearResults()">Limpar Resultados</button>
+        </div>
+
+        <div id="results"></div>
+    </div>
+
+    <script>
+        // Configuração do Supabase - SUBSTITUA PELOS SEUS VALORES
+        const SUPABASE_URL = 'https://your-project.supabase.co';
+        const SUPABASE_ANON_KEY = 'your-anon-key';
+        
+        // Verificar se o Supabase está disponível
+        if (typeof window.supabase === 'undefined') {
+            document.getElementById('results').innerHTML = 
+                '❌ Supabase não encontrado. Certifique-se de estar na página da aplicação principal.';
+        }
+
+        function log(message, type = 'info') {
+            const results = document.getElementById('results');
+            const timestamp = new Date().toLocaleTimeString();
+            const prefix = {
+                'success': '✅',
+                'error': '❌',
+                'warning': '⚠️',
+                'info': 'ℹ️'
+            }[type] || 'ℹ️';
+            
+            results.innerHTML += `[${timestamp}] ${prefix} ${message}\n`;
+            results.scrollTop = results.scrollHeight;
+        }
+
+        function clearResults() {
+            document.getElementById('results').innerHTML = '';
+        }
+
+        async function testAuth() {
+            log('🔍 Testando autenticação...', 'info');
+            
+            try {
+                if (typeof window.supabase === 'undefined') {
+                    throw new Error('Supabase não está disponível. Execute este teste na página da aplicação.');
+                }
+
+                const { data: { user }, error } = await window.supabase.auth.getUser();
+                
+                if (error) {
+                    log(`Erro na autenticação: ${error.message}`, 'error');
+                    return false;
+                }
+                
+                if (!user) {
+                    log('Usuário não está logado', 'warning');
+                    return false;
+                }
+                
+                log(`Usuário autenticado: ${user.email}`, 'success');
+                log(`ID do usuário: ${user.id}`, 'info');
+                return true;
+            } catch (error) {
+                log(`Erro inesperado: ${error.message}`, 'error');
+                return false;
+            }
+        }
+
+        async function testClientes() {
+            log('🔍 Verificando clientes...', 'info');
+            
+            try {
+                const { data: clientes, error } = await window.supabase
+                    .from('clientes')
+                    .select('*')
+                    .limit(5);
+                
+                if (error) {
+                    log(`Erro ao buscar clientes: ${error.message}`, 'error');
+                    return null;
+                }
+                
+                if (!clientes || clientes.length === 0) {
+                    log('Nenhum cliente encontrado. Crie um cliente primeiro.', 'warning');
+                    return null;
+                }
+                
+                log(`${clientes.length} cliente(s) encontrado(s)`, 'success');
+                clientes.forEach((cliente, index) => {
+                    log(`  ${index + 1}. ${cliente.nome} (ID: ${cliente.id})`, 'info');
+                });
+                
+                return clientes[0];
+            } catch (error) {
+                log(`Erro inesperado: ${error.message}`, 'error');
+                return null;
+            }
+        }
+
+        async function testProcessoCreation() {
+            log('🔍 Testando criação de processo...', 'info');
+            
+            try {
+                // 1. Verificar autenticação
+                const authOk = await testAuth();
+                if (!authOk) {
+                    log('Falha na autenticação. Não é possível continuar.', 'error');
+                    return;
+                }
+                
+                // 2. Verificar clientes
+                const cliente = await testClientes();
+                if (!cliente) {
+                    log('Nenhum cliente disponível. Não é possível continuar.', 'error');
+                    return;
+                }
+                
+                // 3. Tentar criar processo
+                const processoTeste = {
+                    nome: `Teste RLS - ${new Date().toISOString()}`,
+                    cliente_id: cliente.id,
+                    tipo_entrada: 'audio_video',
+                    ai_model: 'openai',
+                    status: 'aguardando'
+                };
+                
+                log('📝 Tentando criar processo...', 'info');
+                log(`Dados: ${JSON.stringify(processoTeste, null, 2)}`, 'info');
+                
+                const { data: processoData, error: processoError } = await window.supabase
+                    .from('processos')
+                    .insert([processoTeste])
+                    .select()
+                    .single();
+                
+                if (processoError) {
+                    log(`❌ Erro ao criar processo:`, 'error');
+                    log(`  Código: ${processoError.code}`, 'error');
+                    log(`  Mensagem: ${processoError.message}`, 'error');
+                    if (processoError.details) {
+                        log(`  Detalhes: ${processoError.details}`, 'error');
+                    }
+                    if (processoError.hint) {
+                        log(`  Dica: ${processoError.hint}`, 'error');
+                    }
+                    return;
+                }
+                
+                log('✅ Processo criado com sucesso!', 'success');
+                log(`ID do processo: ${processoData.id}`, 'success');
+                
+                // 4. Verificar se consegue ler o processo
+                const { data: processoLeitura, error: leituraError } = await window.supabase
+                    .from('processos')
+                    .select('*')
+                    .eq('id', processoData.id)
+                    .single();
+                
+                if (leituraError) {
+                    log(`⚠️ Erro ao ler processo criado: ${leituraError.message}`, 'warning');
+                } else {
+                    log('✅ Processo lido com sucesso', 'success');
+                }
+                
+                // 5. Limpar - deletar o processo de teste
+                const { error: deleteError } = await window.supabase
+                    .from('processos')
+                    .delete()
+                    .eq('id', processoData.id);
+                
+                if (deleteError) {
+                    log(`⚠️ Erro ao deletar processo de teste: ${deleteError.message}`, 'warning');
+                } else {
+                    log('🧹 Processo de teste deletado com sucesso', 'success');
+                }
+                
+                log('🎉 Teste concluído com sucesso! RLS está funcionando.', 'success');
+                
+            } catch (error) {
+                log(`💥 Erro inesperado: ${error.message}`, 'error');
+                console.error('Erro completo:', error);
+            }
+        }
+
+        // Executar teste inicial de autenticação ao carregar
+        window.addEventListener('load', () => {
+            setTimeout(() => {
+                if (typeof window.supabase !== 'undefined') {
+                    log('✅ Supabase detectado. Pronto para testes.', 'success');
+                } else {
+                    log('❌ Supabase não detectado. Abra este arquivo na mesma aba da aplicação.', 'error');
+                }
+            }, 1000);
+        });
+    </script>
+</body>
+</html>

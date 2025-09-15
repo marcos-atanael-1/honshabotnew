@@ -116,10 +116,58 @@ export function ProcessoVisualizacao({ processo, analise, onStatusUpdate, onDele
 
   // Função para buscar dados da análise de fluxo
   const fetchAnaliseFluxo = async () => {
-    if (!transcricao) return;
+    console.log('🚀 fetchAnaliseFluxo INICIADA');
+    console.log('  - Timestamp:', new Date().toISOString());
+    console.log('  - processo.id:', processo.id);
+    console.log('  - processo:', processo);
+    console.log('  - transcricao:', transcricao);
+    
+    if (!transcricao) {
+      console.log('❌ fetchAnaliseFluxo: Não há transcrição disponível');
+      return;
+    }
     
     setLoadingAnaliseFluxo(true);
     try {
+      // Primeiro, vamos testar uma query simples para ver se a tabela existe
+      console.log('🧪 Testando acesso à tabela analise_fluxo...');
+      const { data: testData, error: testError } = await supabase
+        .from('analise_fluxo')
+        .select('id')
+        .limit(1);
+      
+      console.log('🧪 Teste de acesso:', { testData, testError });
+      
+      if (testError) {
+        console.error('❌ Erro ao acessar tabela analise_fluxo:', testError);
+        toast.error('Erro ao acessar tabela de análise de fluxo');
+        return;
+      }
+      
+      // Agora vamos buscar todos os dados da tabela para debug
+      console.log('📋 Buscando todos os dados da tabela...');
+      const { data: allData, error: allError } = await supabase
+        .from('analise_fluxo')
+        .select('*');
+      
+      console.log('📋 Todos os dados:', allData);
+      console.log('📋 Total de registros na tabela:', allData?.length || 0);
+      
+      // Buscar dados específicos do processo
+      console.log('🎯 Buscando dados do processo_id:', processo.id);
+      const { data: processoData, error: processoError } = await supabase
+        .from('analise_fluxo')
+        .select('*')
+        .eq('processo_id', processo.id);
+      
+      console.log('🎯 Dados do processo:', processoData);
+      console.log('🎯 Erro do processo:', processoError);
+      
+      // Query original com filtros
+      console.log('🔍 Query original com filtros:');
+      console.log('  - processo_id:', processo.id);
+      console.log('  - transcricao_id:', transcricao.id);
+      
       const { data, error } = await supabase
         .from('analise_fluxo')
         .select('*')
@@ -127,15 +175,21 @@ export function ProcessoVisualizacao({ processo, analise, onStatusUpdate, onDele
         .eq('transcricao_id', transcricao.id)
         .order('seq', { ascending: true });
       
+      console.log('📊 Resultado da query filtrada:');
+      console.log('  - data:', data);
+      console.log('  - error:', error);
+      console.log('  - data.length:', data?.length || 0);
+      
       if (error) {
-        console.error('Erro ao buscar análise de fluxo:', error);
+        console.error('❌ Erro ao buscar análise de fluxo:', error);
         toast.error('Erro ao carregar dados da análise de fluxo');
         return;
       }
       
       setAnaliseFluxoData(data || []);
+      console.log('✅ fetchAnaliseFluxo: Dados carregados:', data?.length || 0, 'registros');
     } catch (error) {
-      console.error('Erro ao buscar análise de fluxo:', error);
+      console.error('❌ Erro geral:', error);
       toast.error('Erro ao carregar dados da análise de fluxo');
     } finally {
       setLoadingAnaliseFluxo(false);
@@ -726,7 +780,7 @@ export function ProcessoVisualizacao({ processo, analise, onStatusUpdate, onDele
               const analysis = await transcriptionService.generateAnalysisFromTranscription(processo.conteudo_texto);
               
               const { data: newAnalise, error: analiseError } = await supabase
-                .from('analises')
+                .from('analise_fluxo')
                 .insert([{
                   processo_id: processo.id,
                   transcricao: processo.conteudo_texto,
@@ -777,7 +831,7 @@ export function ProcessoVisualizacao({ processo, analise, onStatusUpdate, onDele
               // Criar análise básica em caso de erro
               try {
                 const { data: basicAnalise, error: basicError } = await supabase
-                  .from('analises')
+                  .from('analise_fluxo')
                   .insert([{
                     processo_id: processo.id,
                     transcricao: processo.conteudo_texto,
@@ -926,7 +980,14 @@ export function ProcessoVisualizacao({ processo, analise, onStatusUpdate, onDele
 
   // Buscar dados da análise de fluxo quando transcrição mudar
   useEffect(() => {
+    console.log('🔄 useEffect fetchAnaliseFluxo - Verificando condições:');
+    console.log('  - transcricao:', !!transcricao, transcricao?.id);
+    console.log('  - activeSubTab:', activeSubTab);
+    console.log('  - activeTab:', activeTab);
+    console.log('  - Condição atendida:', transcricao && activeSubTab === 'tabela' && activeTab === 'analise_inicial');
+    
     if (transcricao && activeSubTab === 'tabela' && activeTab === 'analise_inicial') {
+      console.log('✅ Chamando fetchAnaliseFluxo automaticamente');
       fetchAnaliseFluxo();
     }
   }, [transcricao, activeSubTab, activeTab]);
@@ -1031,7 +1092,7 @@ export function ProcessoVisualizacao({ processo, analise, onStatusUpdate, onDele
                   const analysis = await transcriptionService.generateAnalysisFromTranscription(transcricaoData.conteudo);
                   
                   const { data: newAnalise, error: analiseError } = await supabase
-                    .from('analises')
+                    .from('analise_fluxo')
                     .insert([{
                       processo_id: processo.id,
                       transcricao: transcricaoData.conteudo,
@@ -1619,7 +1680,7 @@ export function ProcessoVisualizacao({ processo, analise, onStatusUpdate, onDele
         : { fluxo_melhorado_json: flowData };
 
       const { error } = await supabase
-        .from('analises')
+        .from('analise_fluxo')
         .update(updateField)
         .eq('id', analise.id);
 
@@ -1835,7 +1896,14 @@ export function ProcessoVisualizacao({ processo, analise, onStatusUpdate, onDele
                         <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
                         <span className="ml-2 text-gray-600">Carregando dados da análise...</span>
                       </div>
-                    ) : analiseFluxoData.length > 0 ? (
+                    ) : (() => {
+                      console.log('🔍 Verificando renderização da tabela:');
+                      console.log('  - analiseFluxoData:', analiseFluxoData);
+                      console.log('  - analiseFluxoData.length:', analiseFluxoData.length);
+                      console.log('  - Array.isArray(analiseFluxoData):', Array.isArray(analiseFluxoData));
+                      console.log('  - loadingAnaliseFluxo:', loadingAnaliseFluxo);
+                      return analiseFluxoData.length > 0;
+                    })() ? (
                       <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
                         <div className="overflow-x-auto">
                           <table className="min-w-full divide-y divide-gray-200">

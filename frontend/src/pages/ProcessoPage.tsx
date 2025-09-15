@@ -115,13 +115,13 @@ export function ProcessoPage() {
 
       // Load analise if exists
       await supabase
-        .from('analises')
+        .from('analise_fluxo')
         .select('*')
         .eq('processo_id', id)
-        .single()
         .then(({ data: analiseData, error: analiseError }) => {
-          if (!analiseError && analiseData) {
-            setAnalise(analiseData);
+          if (!analiseError && analiseData && analiseData.length > 0) {
+            // Se houver múltiplos registros, pegar o primeiro
+            setAnalise(Array.isArray(analiseData) ? analiseData[0] : analiseData);
           }
         });
 
@@ -263,7 +263,7 @@ export function ProcessoPage() {
           
           // Salvar análise se bem-sucedida
           await supabase
-            .from('analises')
+            .from('analise_fluxo')
             .insert([
               {
                 processo_id: processoId,
@@ -278,7 +278,7 @@ export function ProcessoPage() {
           
           // Criar análise básica em caso de erro
           await supabase
-            .from('analises')
+            .from('analise_fluxo')
             .insert([
               {
                 processo_id: processoId,

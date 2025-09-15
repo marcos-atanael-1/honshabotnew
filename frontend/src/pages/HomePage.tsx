@@ -69,13 +69,10 @@ export function HomePage() {
     try {
       console.log('🔍 Carregando clientes...');
       
-      // Load clientes with process count
+      // Primeiro, tentar query simples sem join
       const { data, error } = await supabase
         .from('clientes')
-        .select(`
-          *,
-          processos(count)
-        `)
+        .select('*')
         .order('created_at', { ascending: false });
 
       console.log('📊 Resultado da query clientes:', { data, error });
@@ -85,11 +82,28 @@ export function HomePage() {
         throw error;
       }
 
-      // Transform the data to include process count
-      const clientesWithCount = (data || []).map(cliente => ({
-        ...cliente,
-        processo_count: cliente.processos?.[0]?.count || 0
-      }));
+      // Para cada cliente, buscar contagem de processos separadamente
+      const clientesWithCount = await Promise.all(
+        (data || []).map(async (cliente) => {
+          try {
+            const { count } = await supabase
+              .from('processos')
+              .select('*', { count: 'exact', head: true })
+              .eq('cliente_id', cliente.id);
+            
+            return {
+              ...cliente,
+              processo_count: count || 0
+            };
+          } catch (processError) {
+            console.warn(`Erro ao contar processos para cliente ${cliente.id}:`, processError);
+            return {
+              ...cliente,
+              processo_count: 0
+            };
+          }
+        })
+      );
 
       console.log('✅ Clientes carregados:', clientesWithCount.length);
       setClientes(clientesWithCount);
