@@ -7,7 +7,9 @@ import {
   ShieldAlert,
   Search,
   Filter,
-  CalendarDays
+  CalendarDays,
+  Trash2,
+  Copy
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../hooks/useAuth';
@@ -16,13 +18,16 @@ import toast from 'react-hot-toast';
 import { UserCredentialsModal } from './UserCredentialsModal';
 
 export function UserManagement() {
-  const { isAdmin, createUser, resetUserPassword, updateUserProfile } = useAuth();
+  const { isAdmin, createUser, resetUserPassword, updateUserProfile, deleteUser } = useAuth();
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [showResetModal, setShowResetModal] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [userToDelete, setUserToDelete] = useState<User | null>(null);
+  const [tempPassword, setTempPassword] = useState<string>('');
   
   // Estados dos filtros
   const [statusFilter, setStatusFilter] = useState<string>('all');
@@ -160,9 +165,10 @@ export function UserManagement() {
     }
 
     try {
+      // A senha temporária padrão é 'TempPassword123!'
+      const defaultTempPassword = 'TempPassword123!';
       await resetUserPassword(selectedUser.id, selectedUser.email);
-      setShowResetModal(false);
-      setSelectedUser(null);
+      setTempPassword(defaultTempPassword);
       setResetData({ confirmReset: false });
       loadUsers();
     } catch (error) {
@@ -179,6 +185,35 @@ export function UserManagement() {
     } catch (error) {
       // Erro já é tratado no updateUserProfile
     }
+  };
+
+  const handleDeleteUser = async () => {
+    if (!userToDelete) return;
+    
+    try {
+      await deleteUser(userToDelete.id);
+      setShowDeleteModal(false);
+      setUserToDelete(null);
+      loadUsers();
+    } catch (error) {
+      // Erro já é tratado no deleteUser
+    }
+  };
+
+  const copyToClipboard = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      toast.success('Senha copiada para a área de transferência!');
+    } catch (error) {
+      toast.error('Erro ao copiar senha');
+    }
+  };
+
+  const closeResetModal = () => {
+    setShowResetModal(false);
+    setSelectedUser(null);
+    setTempPassword('');
+    setResetData({ confirmReset: false });
   };
 
   const filteredUsers = getFilteredUsers();
@@ -437,6 +472,16 @@ export function UserManagement() {
                       >
                         <Shield className="h-4 w-4" />
                       </button>
+                      <button
+                        onClick={() => {
+                          setUserToDelete(user);
+                          setShowDeleteModal(true);
+                        }}
+                        className="text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-300"
+                        title="Remover usuário"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
                     </div>
                   </td>
                 </tr>
@@ -543,48 +588,119 @@ export function UserManagement() {
                 Forçar troca de senha para: <strong>{selectedUser.email}</strong>
               </p>
               
-              <form onSubmit={handleResetPassword} className="space-y-4">
-                <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-md p-4">
-                  <p className="text-sm text-yellow-800 dark:text-yellow-200">
-                    <strong>Atenção:</strong> Esta ação irá forçar o usuário a trocar a senha no próximo acesso. 
-                    O usuário não conseguirá usar o sistema até definir uma nova senha.
-                  </p>
-                </div>
+              {!tempPassword ? (
+                <form onSubmit={handleResetPassword} className="space-y-4">
+                  <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-md p-4">
+                    <p className="text-sm text-yellow-800 dark:text-yellow-200">
+                      <strong>Atenção:</strong> Esta ação irá forçar o usuário a trocar a senha no próximo acesso. 
+                      O usuário não conseguirá usar o sistema até definir uma nova senha.
+                    </p>
+                  </div>
 
-                <div className="flex items-center">
-                  <input
-                    type="checkbox"
-                    id="confirmReset"
-                    checked={resetData.confirmReset}
-                    onChange={(e) => setResetData({ ...resetData, confirmReset: e.target.checked })}
-                    className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                  />
-                  <label htmlFor="confirmReset" className="ml-2 block text-sm text-gray-700 dark:text-gray-300">
-                    Confirmo que desejo forçar a troca de senha
-                  </label>
-                </div>
+                  <div className="flex items-center">
+                    <input
+                      type="checkbox"
+                      id="confirmReset"
+                      checked={resetData.confirmReset}
+                      onChange={(e) => setResetData({ ...resetData, confirmReset: e.target.checked })}
+                      className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                    />
+                    <label htmlFor="confirmReset" className="ml-2 block text-sm text-gray-700 dark:text-gray-300">
+                      Confirmo que desejo forçar a troca de senha
+                    </label>
+                  </div>
 
-                <div className="flex gap-3 mt-6">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowResetModal(false);
-                      setSelectedUser(null);
-                      setResetData({ confirmReset: false });
-                    }}
-                    className="flex-1 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-200 dark:hover:bg-gray-600"
-                  >
-                    Cancelar
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={!resetData.confirmReset}
-                    className="flex-1 px-4 py-2 text-sm font-medium text-white bg-orange-600 border border-transparent rounded-md hover:bg-orange-700 focus:ring-2 focus:ring-orange-500 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    Forçar Troca
-                  </button>
+                  <div className="flex gap-3 mt-6">
+                    <button
+                      type="button"
+                      onClick={closeResetModal}
+                      className="flex-1 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-200 dark:hover:bg-gray-600"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={!resetData.confirmReset}
+                      className="flex-1 px-4 py-2 text-sm font-medium text-white bg-orange-600 border border-transparent rounded-md hover:bg-orange-700 focus:ring-2 focus:ring-orange-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Forçar Troca
+                    </button>
+                  </div>
+                </form>
+              ) : (
+                <div className="space-y-4">
+                  <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-md p-4">
+                    <p className="text-sm text-green-800 dark:text-green-200 mb-3">
+                      <strong>Senha resetada com sucesso!</strong>
+                    </p>
+                    <p className="text-sm text-green-700 dark:text-green-300 mb-3">
+                      Senha temporária gerada:
+                    </p>
+                    <div className="flex items-center gap-2 bg-white dark:bg-gray-700 border border-green-300 dark:border-green-600 rounded-md p-3">
+                      <code className="flex-1 text-sm font-mono text-gray-900 dark:text-white">
+                        {tempPassword}
+                      </code>
+                      <button
+                        onClick={() => copyToClipboard(tempPassword)}
+                        className="p-1 text-green-600 hover:text-green-800 dark:text-green-400 dark:hover:text-green-300"
+                        title="Copiar senha"
+                      >
+                        <Copy className="h-4 w-4" />
+                      </button>
+                    </div>
+                    <p className="text-xs text-green-600 dark:text-green-400 mt-2">
+                      O usuário deverá usar esta senha no próximo acesso e será obrigado a criar uma nova senha.
+                    </p>
+                  </div>
+
+                  <div className="flex justify-end">
+                    <button
+                      onClick={closeResetModal}
+                      className="px-4 py-2 text-sm font-medium text-white bg-green-600 border border-transparent rounded-md hover:bg-green-700 focus:ring-2 focus:ring-green-500"
+                    >
+                      Fechar
+                    </button>
+                  </div>
                 </div>
-              </form>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete User Modal */}
+      {showDeleteModal && userToDelete && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white dark:bg-gray-800 rounded-lg p-6 w-full max-w-md">
+            <div className="flex items-center mb-4">
+              <Trash2 className="h-6 w-6 text-red-500 mr-3" />
+              <h3 className="text-lg font-medium text-gray-900 dark:text-white">
+                Remover Usuário
+              </h3>
+            </div>
+
+            <p className="text-gray-600 dark:text-gray-400 mb-6">
+              Tem certeza que deseja remover o usuário <strong>{userToDelete.nome}</strong>? 
+              Esta ação não pode ser desfeita.
+            </p>
+
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowDeleteModal(false);
+                  setUserToDelete(null);
+                }}
+                className="flex-1 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-200 dark:hover:bg-gray-600"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleDeleteUser}
+                className="flex-1 px-4 py-2 text-sm font-medium text-white bg-red-600 border border-transparent rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
+              >
+                Remover
+              </button>
             </div>
           </div>
         </div>

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { supabase, Cliente, Processo, Analise } from '../lib/supabase';
-import { ArrowLeft, Upload, Video, Music, Type, Save, X, AlertTriangle, Clock, AlertCircle, CheckCircle, XCircle, Trash2 } from 'lucide-react';
+import { ArrowLeft, Upload, Video, Music, Type, Save, X, AlertTriangle, Clock, AlertCircle, CheckCircle, XCircle, Trash2, RefreshCw } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { ProcessoVisualizacao } from '../components/ProcessoVisualizacao';
 import { transcriptionService } from '../lib/transcription';
@@ -71,6 +71,7 @@ export function ProcessoPage() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
     if (cliente_id) {
@@ -397,6 +398,21 @@ export function ProcessoPage() {
     }
   };
 
+  const handleRefresh = async () => {
+    if (refreshing) return;
+    
+    setRefreshing(true);
+    try {
+      await loadData();
+      toast.success('Dados atualizados com sucesso!');
+    } catch (error) {
+      console.error('Erro ao atualizar dados:', error);
+      toast.error('Erro ao atualizar dados. Tente novamente.');
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -462,6 +478,17 @@ export function ProcessoPage() {
                 }
               })()}
             </div>
+            
+            {/* Botão Refresh */}
+            <button
+              onClick={handleRefresh}
+              disabled={refreshing}
+              className="flex items-center space-x-2 px-3 py-2 text-sm text-blue-600 border border-blue-600 rounded-md hover:bg-blue-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              title="Atualizar dados"
+            >
+              <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
+              <span>{refreshing ? 'Atualizando...' : 'Atualizar'}</span>
+            </button>
             
             {/* Botão Excluir */}
             <button

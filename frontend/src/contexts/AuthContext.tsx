@@ -14,6 +14,7 @@ interface AuthContextType {
   createUser: (email: string, password: string, nome: string, role?: 'admin' | 'user') => Promise<void>;
   resetUserPassword: (userId: string, email: string) => Promise<void>;
   updateUserProfile: (userId: string, updates: Partial<User>) => Promise<void>;
+  deleteUser: (userId: string) => Promise<void>;
 }
 
 export const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -332,6 +333,47 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const deleteUser = async (userId: string) => {
+    try {
+      console.log('🗑️ Admin removendo usuário:', userId);
+      
+      if (!isAdmin) {
+        throw new Error('Apenas administradores podem remover usuários');
+      }
+
+      if (userId === user?.id) {
+        throw new Error('Você não pode remover sua própria conta');
+      }
+
+      const { error } = await supabase
+        .from('users')
+        .delete()
+        .eq('id', userId);
+
+      if (error) {
+        throw error;
+      }
+
+      // Log da ação administrativa
+      await supabase
+        .from('admin_audit_log')
+        .insert({
+          admin_user_id: user?.id,
+          target_user_id: userId,
+          action: 'delete_user',
+          details: { timestamp: new Date().toISOString() }
+        });
+
+      console.log('✅ Usuário removido com sucesso');
+      toast.success('Usuário removido com sucesso!');
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Erro ao remover usuário';
+      console.error('❌ Erro removendo usuário:', message);
+      toast.error(message);
+      throw error;
+    }
+  };
+
   const value = {
     user,
     loading,
@@ -343,6 +385,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     createUser,
     resetUserPassword,
     updateUserProfile,
+    deleteUser,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
