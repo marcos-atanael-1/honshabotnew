@@ -167,12 +167,41 @@ export function ProcessoVisualizacao({ processo, analise, onStatusUpdate, onDele
       console.log('🔍 Query original com filtros:');
       console.log('  - processo_id:', processo.id);
       console.log('  - transcricao_id:', transcricao.id);
+      console.log('  - estado:', 'Análise Inicial (Tabela)');
+      
+      // Primeiro, vamos verificar se existem registros com esse processo_id e estado
+      const { data: estadoData, error: estadoError } = await supabase
+        .from('analise_fluxo')
+        .select('*')
+        .eq('processo_id', processo.id)
+        .eq('estado', 'Análise Inicial (Tabela)');
+      
+      console.log('🎯 Registros com processo_id e estado corretos:', estadoData);
+      console.log('🎯 Quantidade encontrada:', estadoData?.length || 0);
+      
+      if (estadoData && estadoData.length > 0) {
+        console.log('🔍 Verificando transcricao_id nos registros encontrados:');
+        estadoData.forEach((registro, index) => {
+          console.log(`  Registro ${index + 1}:`);
+          console.log(`    - transcricao_id no banco: '${registro.transcricao_id}'`);
+          console.log(`    - transcricao_id atual: '${transcricao.id}'`);
+          console.log(`    - São iguais: ${registro.transcricao_id === transcricao.id}`);
+        });
+        
+        // SOLUÇÃO: Se existem registros com processo_id e estado corretos,
+        // usar esses registros independentemente do transcricao_id
+        console.log('✅ USANDO REGISTROS EXISTENTES (ignorando transcricao_id)');
+        setAnaliseFluxoData(estadoData);
+        console.log('✅ fetchAnaliseFluxo: Dados carregados:', estadoData.length, 'registros');
+        return;
+      }
       
       const { data, error } = await supabase
         .from('analise_fluxo')
         .select('*')
         .eq('processo_id', processo.id)
         .eq('transcricao_id', transcricao.id)
+        .eq('estado', 'Análise Inicial (Tabela)')
         .order('seq', { ascending: true });
       
       console.log('📊 Resultado da query filtrada:');
@@ -760,7 +789,7 @@ export function ProcessoVisualizacao({ processo, analise, onStatusUpdate, onDele
             } else {
               // Fallback para objeto mock se houver erro
               textoTranscricao = {
-                id: `texto-${processo.id}`,
+                id: window.crypto.randomUUID(),
                 processo_id: processo.id,
                 conteudo: processo.conteudo_texto || '',
                 status: 'concluido',
@@ -798,7 +827,7 @@ export function ProcessoVisualizacao({ processo, analise, onStatusUpdate, onDele
                     {
                       processo_id: processo.id,
                       transcricao_id: textoTranscricao.id,
-                      estado: 'Análise Inicial',
+                      estado: 'Análise Inicial (Tabela)',
                       seq: 1,
                       responsavel_area: 'Área Responsável',
                       etapa_descricao: 'Etapa do processo identificada no texto',
@@ -871,7 +900,7 @@ export function ProcessoVisualizacao({ processo, analise, onStatusUpdate, onDele
                       {
                         processo_id: processo.id,
                         transcricao_id: textoTranscricao.id,
-                        estado: 'Análise Inicial',
+                        estado: 'Análise Inicial (Tabela)',
                         seq: 1,
                         responsavel_area: 'Área Responsável',
                         etapa_descricao: 'Etapa do processo identificada no texto',
@@ -1264,34 +1293,154 @@ export function ProcessoVisualizacao({ processo, analise, onStatusUpdate, onDele
 
   // Callbacks para recarregar transcrições após upload
   const handleEstadoAtualUploadSuccess = useCallback(async () => {
+    // Forçar a criação de um registro de transcrição com status "processando" imediatamente
     try {
-      const { data, error } = await supabase
+      // Primeiro, verificar se já existe um registro
+      const { data: existingData, error: existingError } = await supabase
         .from('transcricoes')
         .select('*')
         .eq('processo_id', processo.id)
         .eq('tipo_transcricao', 'Estado Atual')
         .single();
 
-      if (!error && data) {
-        setTranscricaoEstadoAtual(data);
+      // Se não existir registro ou ocorrer erro (registro não encontrado), criar um temporário
+      if (existingError || !existingData) {
+        // Criar um registro temporário para mostrar "processando" imediatamente
+        const { data: tempData, error: tempError } = await supabase
+          .from('transcricoes')
+          .insert([
+            {
+              processo_id: processo.id,
+              tipo_transcricao: 'Estado Atual',
+              status: 'processando',
+              conteudo: '',
+            },
+          ])
+          .select()
+          .single();
+
+        if (!tempError && tempData) {
+          setTranscricaoEstadoAtual(tempData);
+        }
+      } else if (existingData) {
+        // Se já existe um registro, atualizar o estado com ele
+        setTranscricaoEstadoAtual(existingData);
       }
+
+      // Iniciar polling para buscar atualizações a cada 2 segundos por até 30 segundos
+      let attempts = 0;
+      const maxAttempts = 15; // 30 segundos total (15 * 2s)
+      
+      const pollForTranscription = async () => {
+        if (attempts >= maxAttempts) return;
+        
+        attempts++;
+        
+        try {
+          const { data, error } = await supabase
+            .from('transcricoes')
+            .select('*')
+            .eq('processo_id', processo.id)
+            .eq('tipo_transcricao', 'Estado Atual')
+            .single();
+
+          if (!error && data) {
+            setTranscricaoEstadoAtual(data);
+            
+            // Se o status não for mais "processando", podemos parar o polling
+            if (data.status !== 'processando' && data.status !== 'Em Andamento') {
+              return;
+            }
+          }
+          
+          // Continuar polling
+          setTimeout(pollForTranscription, 2000);
+        } catch (pollError) {
+          console.error('Erro durante polling de Estado Atual:', pollError);
+          setTimeout(pollForTranscription, 2000);
+        }
+      };
+      
+      // Iniciar o polling
+      pollForTranscription();
+      
     } catch (error) {
       console.error('Erro ao recarregar transcrição do Estado Atual:', error);
     }
   }, [processo.id]);
 
   const handleEstadoFuturoUploadSuccess = useCallback(async () => {
+    // Forçar a criação de um registro de transcrição com status "processando" imediatamente
     try {
-      const { data, error } = await supabase
+      // Primeiro, verificar se já existe um registro
+      const { data: existingData, error: existingError } = await supabase
         .from('transcricoes')
         .select('*')
         .eq('processo_id', processo.id)
         .eq('tipo_transcricao', 'Estado Futuro')
         .single();
 
-      if (!error && data) {
-        setTranscricaoEstadoFuturo(data);
+      // Se não existir registro ou ocorrer erro (registro não encontrado), criar um temporário
+      if (existingError || !existingData) {
+        // Criar um registro temporário para mostrar "processando" imediatamente
+        const { data: tempData, error: tempError } = await supabase
+          .from('transcricoes')
+          .insert([
+            {
+              processo_id: processo.id,
+              tipo_transcricao: 'Estado Futuro',
+              status: 'processando',
+              conteudo: '',
+            },
+          ])
+          .select()
+          .single();
+
+        if (!tempError && tempData) {
+          setTranscricaoEstadoFuturo(tempData);
+        }
+      } else if (existingData) {
+        // Se já existe um registro, atualizar o estado com ele
+        setTranscricaoEstadoFuturo(existingData);
       }
+
+      // Iniciar polling para buscar atualizações a cada 2 segundos por até 30 segundos
+      let attempts = 0;
+      const maxAttempts = 15; // 30 segundos total (15 * 2s)
+      
+      const pollForTranscription = async () => {
+        if (attempts >= maxAttempts) return;
+        
+        attempts++;
+        
+        try {
+          const { data, error } = await supabase
+            .from('transcricoes')
+            .select('*')
+            .eq('processo_id', processo.id)
+            .eq('tipo_transcricao', 'Estado Futuro')
+            .single();
+
+          if (!error && data) {
+            setTranscricaoEstadoFuturo(data);
+            
+            // Se o status não for mais "processando", podemos parar o polling
+            if (data.status !== 'processando' && data.status !== 'Em Andamento') {
+              return;
+            }
+          }
+          
+          // Continuar polling
+          setTimeout(pollForTranscription, 2000);
+        } catch (pollError) {
+          console.error('Erro durante polling de Estado Futuro:', pollError);
+          setTimeout(pollForTranscription, 2000);
+        }
+      };
+      
+      // Iniciar o polling
+      pollForTranscription();
+      
     } catch (error) {
       console.error('Erro ao recarregar transcrição do Estado Futuro:', error);
     }
@@ -1873,7 +2022,12 @@ export function ProcessoVisualizacao({ processo, analise, onStatusUpdate, onDele
                       <h3 className="text-lg font-semibold text-gray-900">Tabela - Análise Inicial</h3>
                       <div className="flex items-center space-x-2">
                         <button
-                          onClick={fetchAnaliseFluxo}
+                          onClick={async () => {
+                            // Primeiro atualizar a transcrição (como no polling)
+                            await refreshTranscricao();
+                            // Depois buscar os dados da análise
+                            await fetchAnaliseFluxo();
+                          }}
                           disabled={loadingAnaliseFluxo}
                           className="flex items-center space-x-2 px-3 py-2 text-sm text-blue-600 border border-blue-600 rounded-md hover:bg-blue-50 transition-colors disabled:opacity-50"
                         >

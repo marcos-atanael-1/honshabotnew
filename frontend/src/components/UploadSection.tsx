@@ -101,13 +101,13 @@ export function UploadSection({ processoId, tipoTranscricao, onUploadSuccess, co
             {
               processo_id: processoId,
               conteudo: textContent,
-              status: 'Em Andamento',
+              status: 'concluido',
               tipo_transcricao: tipoTranscricao,
             },
           ])
           .select()
           .single();
-
+    
         if (transcricaoError) throw transcricaoError;
         transcricaoId = transcricaoData.id;
       } else {
