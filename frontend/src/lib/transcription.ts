@@ -58,7 +58,7 @@ export class TranscriptionService {
 
   private getApiBaseUrl(): string {
     // Usar variável de ambiente do Vite
-    return import.meta.env.VITE_BACKEND_URL || 'http://77.237.233.230:8000';
+    return import.meta.env.VITE_BACKEND_URL || 'http://77.237.233.230';
   }
 
   async startTranscription(file: File, processoId: string, tipoTranscricao?: string): Promise<string> {
