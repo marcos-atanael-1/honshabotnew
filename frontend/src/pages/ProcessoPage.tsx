@@ -332,38 +332,18 @@ export function ProcessoPage() {
         } catch (transcriptionError) {
           console.error('Erro ao iniciar transcrição:', transcriptionError);
           
-          // Atualizar status da transcrição para erro
-          await transcriptionService.updateTranscriptionStatus(processoId, 'erro', 
-            transcriptionError instanceof Error ? transcriptionError.message : 'Erro desconhecido');
-
-          // Mostrar erro específico baseado no tipo
-          let errorMessage = 'Erro desconhecido na transcrição';
-          if (transcriptionError instanceof Error) {
-            if (transcriptionError.message.includes('não está disponível')) {
-              errorMessage = 'Serviço de transcrição temporariamente indisponível. Tente novamente em alguns minutos.';
-            } else if (transcriptionError.message.includes('fetch')) {
-              errorMessage = 'Erro de conexão com o serviço de transcrição. Verifique sua internet.';
-            } else {
-              errorMessage = transcriptionError.message;
-            }
-          }
-          
-          toast.error(errorMessage);
-          throw new Error(errorMessage);
+          // Apenas registrar o erro no console, mas manter o processo como 'processando'
+          // O status permanecerá como 'processando' independentemente do erro da API externa
+          console.log('Processo mantido como processando mesmo com erro na API externa');
         }
       }
 
     } catch (error) {
       console.error('Error in processing:', error);
       
-      // Update status to error
-      await supabase
-        .from('processos')
-        .update({ status: 'erro' })
-        .eq('id', processoId);
-
-      // Show error to user if they're still on the page
-      toast.error(`Erro no processamento: ${error instanceof Error ? error.message : 'Erro desconhecido'}`);
+      // Não alterar o status para erro - manter como 'processando'
+      // O processo permanecerá com status 'processando' independentemente de erros
+      console.log('Processo mantido como processando mesmo com erro geral');
     }
   };
 
